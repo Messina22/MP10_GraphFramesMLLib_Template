@@ -19,8 +19,7 @@ sc = SparkContext()
 sqlContext = SQLContext(sc)
 
 
-def get_clusters(df, num_clusters, max_iterations, initialization_mode,
-                 seed):
+def get_clusters(df, num_clusters, max_iterations, initialization_mode, seed):
     # TODO:
     # Use the given data and the cluster pparameters to train a K-Means model
     # Find the cluster id corresponding to data point (a car)
@@ -28,14 +27,25 @@ def get_clusters(df, num_clusters, max_iterations, initialization_mode,
     # For example, if the output is [["Mercedes", "Audi"], ["Honda", "Hyundai"]]
     # Then "Mercedes" and "Audi" should have the same cluster id, and "Honda" and
     # "Hyundai" should have the same cluster id
-    return [[]]
+    kmeans = (
+        KMeans()
+        .setK(num_clusters)
+        .setSeed(seed)
+        .setMaxIter(max_iterations)
+        .setInitMode(initialization_mode)
+    )
+    model = kmeans.fit(df)
+    transformed = model.transform(df)
+    clusters = transformed.groupBy("prediction").agg(F.collect_list("car_name"))
+    return clusters.rdd.map(lambda x: x[1]).collect()
 
 
 def parse_line(line):
     # TODO: Parse data from line into an RDD
     # Hint: Look at the data format and columns required by the KMeans fit and
     # transform functions
-    return []
+    parts = line.split(",")
+    return parts[0], Vectors.dense([float(x) for x in parts[1:]])
 
 
 if __name__ == "__main__":
@@ -44,9 +54,8 @@ if __name__ == "__main__":
     rdd = f.map(parse_line)
 
     # TODO: Convert RDD into a dataframe
-    df = None
+    df = sqlContext.createDataFrame(rdd, ["car_name", "features"])
 
-    clusters = get_clusters(df, NUM_CLUSTERS, MAX_ITERATIONS,
-                            INITIALIZATION_MODE, SEED)
+    clusters = get_clusters(df, NUM_CLUSTERS, MAX_ITERATIONS, INITIALIZATION_MODE, SEED)
     for cluster in clusters:
-        print(','.join(cluster))
+        print(",".join(cluster))
