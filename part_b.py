@@ -1,8 +1,6 @@
 from pyspark import SparkContext
-from pyspark.sql import SQLContext
-from pyspark.ml.clustering import KMeans
-from pyspark.ml.linalg import Vectors
-import pyspark.sql.functions as F
+from numpy import array
+from pyspark.mllib.clustering import KMeans, KMeansModel
 
 ############################################
 #### PLEASE USE THE GIVEN PARAMETERS     ###
@@ -16,10 +14,15 @@ MAX_ITERATIONS = 100
 INITIALIZATION_MODE = "random"
 
 sc = SparkContext()
-sqlContext = SQLContext(sc)
 
 
-def get_clusters(df, num_clusters, max_iterations, initialization_mode, seed):
+def get_clusters(
+    data_rdd,
+    num_clusters=NUM_CLUSTERS,
+    max_iterations=MAX_ITERATIONS,
+    initialization_mode=INITIALIZATION_MODE,
+    seed=SEED,
+):
     # TODO:
     # Use the given data and the cluster pparameters to train a K-Means model
     # Find the cluster id corresponding to data point (a car)
@@ -27,35 +30,31 @@ def get_clusters(df, num_clusters, max_iterations, initialization_mode, seed):
     # For example, if the output is [["Mercedes", "Audi"], ["Honda", "Hyundai"]]
     # Then "Mercedes" and "Audi" should have the same cluster id, and "Honda" and
     # "Hyundai" should have the same cluster id
-    kmeans = (
-        KMeans()
-        .setK(num_clusters)
-        .setSeed(seed)
-        .setMaxIter(max_iterations)
-        .setInitMode(initialization_mode)
+    model = KMeans.train(
+        data_rdd.map(lambda x: x[1]),
+        num_clusters,
+        maxIterations=max_iterations,
+        initializationMode=initialization_mode,
+        seed=seed,
     )
-    model = kmeans.fit(df)
-    transformed = model.transform(df)
-    clusters = transformed.groupBy("prediction").agg(F.collect_list("car_name"))
-    return clusters.rdd.map(lambda x: x[1]).collect()
+    clusters = data_rdd.map(lambda x: (model.predict(x[1]), x[0]))
+    return clusters.groupByKey().map(lambda x: x[1]).collect()
 
 
 def parse_line(line):
-    # TODO: Parse data from line into an RDD
-    # Hint: Look at the data format and columns required by the KMeans fit and
-    # transform functions
     parts = line.split(",")
-    return parts[0], Vectors.dense([float(x) for x in parts[1:]])
+    car_name = parts[0]
+    features = array([float(x) for x in parts[1:]])
+    return car_name, features
 
 
 if __name__ == "__main__":
     f = sc.textFile("dataset/cars.data")
 
-    rdd = f.map(parse_line)
+    # TODO: Parse data from file into an RDD
 
-    # TODO: Convert RDD into a dataframe
-    df = sqlContext.createDataFrame(rdd, ["car_name", "features"])
+    data_rdd = f.map(parse_line)
+    clusters = get_clusters(data_rdd)
 
-    clusters = get_clusters(df, NUM_CLUSTERS, MAX_ITERATIONS, INITIALIZATION_MODE, SEED)
     for cluster in clusters:
         print(",".join(cluster))
